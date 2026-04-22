@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 15
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/refresh-libraries",
+      "schedule": "0 18 * * *"
+    }
+  ]
+}
