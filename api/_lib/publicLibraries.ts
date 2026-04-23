@@ -53,11 +53,20 @@ export async function fetchPublicLibraries({
     url.searchParams.set('numOfRows', String(pageSize));
     url.searchParams.set('type', 'json');
 
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-    });
+    let response: Response;
+
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'today-library/1.0',
+        },
+      });
+    } catch (error) {
+      throw new Error(
+        `Public data fetch failed for ${url.origin}${url.pathname}: ${formatError(error)}`,
+      );
+    }
 
     if (!response.ok) {
       throw new Error(
@@ -80,6 +89,53 @@ export async function fetchPublicLibraries({
   }
 
   return rows.map(toLibrary).filter(isLibrary);
+}
+
+export async function checkPublicLibraryApi() {
+  const serviceKey =
+    process.env.PUBLIC_DATA_SERVICE_KEY ?? process.env.DATA_GO_KR_SERVICE_KEY;
+
+  if (!serviceKey) {
+    return {
+      ok: false,
+      endpoint: DEFAULT_ENDPOINT,
+      hasServiceKey: false,
+      message: 'Missing PUBLIC_DATA_SERVICE_KEY environment variable.',
+    };
+  }
+
+  const endpoint = process.env.PUBLIC_DATA_LIBRARY_API_URL ?? DEFAULT_ENDPOINT;
+  const url = new URL(endpoint);
+  url.searchParams.set('serviceKey', serviceKey);
+  url.searchParams.set('pageNo', '1');
+  url.searchParams.set('numOfRows', '1');
+  url.searchParams.set('type', 'json');
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'today-library/1.0',
+      },
+    });
+    const body = await response.text();
+
+    return {
+      ok: response.ok,
+      endpoint: `${url.origin}${url.pathname}`,
+      hasServiceKey: true,
+      status: response.status,
+      statusText: response.statusText,
+      bodyPreview: body.slice(0, 500),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      endpoint: `${url.origin}${url.pathname}`,
+      hasServiceKey: true,
+      message: formatError(error),
+    };
+  }
 }
 
 function readRows(json: unknown) {
@@ -303,4 +359,17 @@ function asArray(value: unknown): unknown[] {
 
 function isLibrary(value: Library | null): value is Library {
   return value !== null;
+}
+
+function formatError(error: unknown) {
+  if (error instanceof Error) {
+    const cause =
+      'cause' in error && error.cause
+        ? ` cause=${JSON.stringify(error.cause)}`
+        : '';
+
+    return `${error.name}: ${error.message}${cause}`;
+  }
+
+  return String(error);
 }
