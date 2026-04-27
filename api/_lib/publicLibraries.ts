@@ -1,4 +1,6 @@
 import type { Library, LibraryHours } from '../../src/types';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 
 type PublicDataRow = Record<string, unknown>;
 
@@ -17,6 +19,8 @@ export type LibrariesPayload = {
 const DEFAULT_ENDPOINT = 'https://api.data.go.kr/openapi/tn_pubr_public_lbrry_api';
 const DEFAULT_PAGE_SIZE = 500;
 const DEFAULT_MAX_PAGES = 20;
+const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_RETRY_COUNT = 2;
 
 export async function buildLibrariesPayload(
   options: FetchLibrariesOptions = {},
@@ -53,28 +57,7 @@ export async function fetchPublicLibraries({
     url.searchParams.set('numOfRows', String(pageSize));
     url.searchParams.set('type', 'json');
 
-    let response: Response;
-
-    try {
-      response = await fetch(url, {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'today-library/1.0',
-        },
-      });
-    } catch (error) {
-      throw new Error(
-        `Public data fetch failed for ${url.origin}${url.pathname}: ${formatError(error)}`,
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        `Public data request failed with ${response.status} ${response.statusText}.`,
-      );
-    }
-
-    const json = await response.json();
+    const json = await requestPublicData(url);
     const { pageRows, total } = readRows(json);
 
     rows.push(...pageRows);
@@ -112,20 +95,14 @@ export async function checkPublicLibraryApi() {
   url.searchParams.set('type', 'json');
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'today-library/1.0',
-      },
-    });
-    const body = await response.text();
+    const { status, statusText, body } = await requestPublicDataText(url);
 
     return {
-      ok: response.ok,
+      ok: status >= 200 && status < 300,
       endpoint: `${url.origin}${url.pathname}`,
       hasServiceKey: true,
-      status: response.status,
-      statusText: response.statusText,
+      status,
+      statusText,
       bodyPreview: body.slice(0, 500),
     };
   } catch (error) {
@@ -136,6 +113,119 @@ export async function checkPublicLibraryApi() {
       message: formatError(error),
     };
   }
+}
+
+async function requestPublicData(url: URL) {
+  const { body } = await requestPublicDataText(url);
+
+  try {
+    return JSON.parse(body) as unknown;
+  } catch (error) {
+    throw new Error(
+      `Public data returned invalid JSON (${url.origin}${url.pathname}): ${formatError(error)}`,
+    );
+  }
+}
+
+async function requestPublicDataText(url: URL) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= REQUEST_RETRY_COUNT; attempt += 1) {
+    try {
+      try {
+        return await requestWithFetch(url);
+      } catch (error) {
+        lastError = error;
+        return await requestWithNode(url);
+      }
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === REQUEST_RETRY_COUNT) {
+        break;
+      }
+    }
+  }
+
+  throw new Error(
+    `Public data fetch failed for ${url.origin}${url.pathname}: ${formatError(lastError)}`,
+  );
+}
+
+async function requestWithFetch(url: URL) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'Connection': 'close',
+      'User-Agent': 'today-library/1.0',
+    },
+  });
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Public data request failed with ${response.status} ${response.statusText}. body=${body.slice(0, 300)}`,
+    );
+  }
+
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    body,
+  };
+}
+
+function requestWithNode(url: URL) {
+  return new Promise<{ status: number; statusText: string; body: string }>(
+    (resolve, reject) => {
+      const requestFn = url.protocol === 'http:' ? httpRequest : httpsRequest;
+      const request = requestFn(
+        url.toString(),
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Connection: 'close',
+            'User-Agent': 'today-library/1.0',
+          },
+        },
+        (response) => {
+          const chunks: Buffer[] = [];
+
+          response.on('data', (chunk: Buffer | string) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+
+          response.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf8');
+            const status = response.statusCode ?? 0;
+            const statusText = response.statusMessage ?? '';
+
+            if (status < 200 || status >= 300) {
+              reject(
+                new Error(
+                  `Public data request failed with ${status} ${statusText}. body=${body.slice(0, 300)}`,
+                ),
+              );
+              return;
+            }
+
+            resolve({
+              status,
+              statusText,
+              body,
+            });
+          });
+        },
+      );
+
+      request.on('error', reject);
+      request.setTimeout(REQUEST_TIMEOUT_MS, () => {
+        request.destroy(new Error(`Public data request timed out in ${REQUEST_TIMEOUT_MS}ms.`));
+      });
+      request.end();
+    },
+  );
 }
 
 function readRows(json: unknown) {
