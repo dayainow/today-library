@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildLibrariesPayload } from './api/_lib/publicLibraries';
+import { buildLibrariesPayload } from '../api/_lib/publicLibraries';
 
 async function generate() {
   console.log('Generating static library data...');

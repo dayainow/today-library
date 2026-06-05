@@ -142,7 +142,7 @@ Play Store는 위치 권한을 사용하는 앱에 개인정보 처리방침 URL
 `api/privacy.ts`로 Vercel 라우트 구현 완료. 배포 후 아래 URL이 활성화됩니다.
 
 ```
-https://today-library.vercel.app/api/privacy
+https://today-library-sigma.vercel.app/api/privacy
 ```
 
 Play Console → 앱 콘텐츠 → 개인정보 처리방침에 위 URL을 입력하세요.

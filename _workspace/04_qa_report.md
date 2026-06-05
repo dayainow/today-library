@@ -1,30 +1,10 @@
-# QA Report
+# QA Report: Today Library Launch Preparation
 
-Date: 2026-05-06 KST
+## Verification Steps Performed
+1. **Typechecking**: Executed `npm run typecheck`. Fixed 1 import path error in `scripts/generate-static-data.ts`. Passed.
+2. **Config Dump**: Executed `npx expo config --type prebuild`. Verified iOS and Android permissions (ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION) are present.
+3. **Asset Formatting**: Used `sips` to convert all generated images to strict PNG format and scale them to required dimensions (512, 1024, 1242x2688, 1024x500).
 
-## Results
-
-- Production diagnostic endpoint: passed, `ok: true`, public data response `200 OK`, `NORMAL_SERVICE`.
-- Production `/api/libraries`: passed, `200`, 3,390 libraries, about 1.69 MB.
-- Local env presence: passed, required keys are set in `.env.local`.
-- Local app API URL: passed, points to production `/api/libraries`.
-- Local Vercel dev with exported env: passed.
-- Local `/api/debug/public-data`: passed, `ok: true`.
-- Local `/api/libraries` after fix: passed, `200`, 3,390 libraries.
-- Local normalized sample after fix: first library has weekday `08:00-22:00`, Saturday `08:00-22:00`.
-- Production payload through client duplicate-ID guard: passed, 3,390 unique IDs.
-- Local `/api/libraries` after stable ID fix: passed, 3,390 unique IDs, 0 duplicate IDs.
-- `npm run typecheck`: passed.
-- Design update typecheck: passed.
-- Expo config check: passed, app name resolves to `오늘의 도서관` and splash/adaptive icon point to regenerated assets.
-- Current-location refresh control typecheck: passed.
-
-## Device Run Notes
-
-- Existing Metro server is alive on local port `8081`.
-- Starting an additional Expo server on `8082` failed with Expo CLI `ERR_SOCKET_BAD_PORT` from `freeport-async`.
-- Use the existing Metro URL from the current terminal for Android phone testing, or restart the current Metro server with `npx expo start --lan --clear` after stopping it.
-
-## Notes
-
-Production is currently connected, but the operating-hours field fix is only in the local working tree until it is deployed.
+## Remaining Risks
+- The generated AI assets are placeholders/first-drafts. The user should review them to ensure they meet their branding expectations.
+- Google Play Console 14-day closed testing is a manual process that the user must conduct.
