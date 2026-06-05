@@ -328,6 +328,7 @@ export default function App() {
 
         <Pressable
           accessibilityHint="현재 위치를 다시 가져와 검색 결과를 거리순으로 정렬합니다."
+          accessibilityLabel={locationLoading ? '위치 확인 중' : locationLabel}
           accessibilityRole="button"
           disabled={locationLoading}
           onPress={() =>
@@ -470,6 +471,7 @@ export default function App() {
         extraData={favorites}
         initialNumToRender={12}
         ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
+        keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="always"
         keyExtractor={(item) => item.library.id}
         ListFooterComponent={
@@ -612,6 +614,7 @@ function LibraryCard({
             isFavorite ? `${library.name} 즐겨찾기 해제` : `${library.name} 즐겨찾기`
           }
           accessibilityRole="button"
+          accessibilityState={{ checked: isFavorite }}
           hitSlop={8}
           onPress={() => onFavorite(library.id)}
           style={[styles.favoriteButton, isFavorite && styles.favoriteButtonActive]}
@@ -648,7 +651,11 @@ function LibraryCard({
       <Text style={styles.closedRule}>휴관 {library.closedRules.join(', ')}</Text>
 
       <View style={styles.actionRow}>
-        <ActionButton label="전화" onPress={() => onCall(library.phone)} />
+        <ActionButton
+          disabled={!library.phone}
+          label="전화"
+          onPress={() => onCall(library.phone)}
+        />
         <ActionButton label="홈페이지" onPress={() => onHomepage(library.homepage)} />
         <ActionButton label="길찾기" onPress={() => onDirections(library)} primary />
       </View>
@@ -666,10 +673,12 @@ function InfoCell({ label, value }: { label: string; value: string }) {
 }
 
 function ActionButton({
+  disabled,
   label,
   onPress,
   primary,
 }: {
+  disabled?: boolean;
   label: string;
   onPress: () => void;
   primary?: boolean;
@@ -677,13 +686,19 @@ function ActionButton({
   return (
     <Pressable
       accessibilityRole="button"
+      disabled={disabled}
       onPress={onPress}
-      style={[styles.actionButton, primary && styles.actionButtonPrimary]}
+      style={[
+        styles.actionButton,
+        primary && styles.actionButtonPrimary,
+        disabled && styles.actionButtonDisabled,
+      ]}
     >
       <Text
         style={[
           styles.actionButtonText,
           primary && styles.actionButtonTextPrimary,
+          disabled && styles.actionButtonTextDisabled,
         ]}
       >
         {label}
@@ -712,9 +727,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#f7f8fb',
-  },
-  content: {
-    paddingBottom: 24,
   },
   launchScreen: {
     alignItems: 'center',
@@ -1277,6 +1289,13 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontSize: 12,
     fontWeight: '700',
+  },
+  actionButtonDisabled: {
+    borderColor: '#e2e8f0',
+    opacity: 0.38,
+  },
+  actionButtonTextDisabled: {
+    color: '#94a3b8',
   },
   actionButtonTextPrimary: {
     color: '#ffffff',

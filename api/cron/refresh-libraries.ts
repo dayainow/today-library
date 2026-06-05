@@ -9,7 +9,7 @@ export default async function handler(
   const cronSecret = process.env.CRON_SECRET;
 
   if (
-    cronSecret &&
+    !cronSecret ||
     request.headers.authorization !== `Bearer ${cronSecret}`
   ) {
     response.status(401).json({ ok: false, error: 'UNAUTHORIZED' });
