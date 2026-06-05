@@ -1,6 +1,7 @@
 import type { Library, LibraryHours, UserCoordinate } from '../types';
 
 const DAY_NAMES = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+const DAY_SHORT_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
 export function getLibraryStatus(library: Library, now: Date) {
   const day = now.getDay();
@@ -34,7 +35,7 @@ export function getLibraryStatus(library: Library, now: Date) {
     };
   }
 
-  if (currentMinutes > closeMinutes) {
+  if (currentMinutes >= closeMinutes) {
     return {
       isOpen: false,
       label: '오늘 운영 종료',
@@ -88,34 +89,47 @@ function getHoursForDay(library: Library, day: number): LibraryHours | null {
 }
 
 function isClosedByRule(rules: string[], date: Date) {
-  const todayName = DAY_NAMES[date.getDay()];
+  const todayFull = DAY_NAMES[date.getDay()];
+  const todayShort = DAY_SHORT_NAMES[date.getDay()];
   const weekOfMonth = Math.ceil(date.getDate() / 7);
 
   return rules.some((rule) => {
-    if (rule.includes('매주') && rule.includes(todayName)) {
-      return true;
+    // Full-name patterns: '월요일', '매주 월요일', '첫째 월요일', …
+    if (rule.includes(todayFull)) {
+      if (rule.includes('매주')) return true;
+      if (rule.includes('첫째') && weekOfMonth === 1) return true;
+      if (rule.includes('둘째') && weekOfMonth === 2) return true;
+      if (rule.includes('셋째') && weekOfMonth === 3) return true;
+      if (rule.includes('넷째') && weekOfMonth === 4) return true;
+      // bare full name ('월요일' with no qualifier)
+      if (!rule.includes('첫째') && !rule.includes('둘째') && !rule.includes('셋째') && !rule.includes('넷째')) return true;
     }
 
-    if (rule.includes(todayName)) {
-      if (rule.includes('첫째') && weekOfMonth === 1) {
-        return true;
-      }
-
-      if (rule.includes('둘째') && weekOfMonth === 2) {
-        return true;
-      }
-
-      if (rule.includes('셋째') && weekOfMonth === 3) {
-        return true;
-      }
-
-      if (rule.includes('넷째') && weekOfMonth === 4) {
-        return true;
-      }
+    // Short-name patterns: '월', '매주 월', '첫째 월', …
+    // containsShortDayAsWord guards against '일' matching inside '공휴일' etc.
+    if (containsShortDayAsWord(rule, todayShort)) {
+      if (rule.includes('매주')) return true;
+      if (rule.includes('첫째') && weekOfMonth === 1) return true;
+      if (rule.includes('둘째') && weekOfMonth === 2) return true;
+      if (rule.includes('셋째') && weekOfMonth === 3) return true;
+      if (rule.includes('넷째') && weekOfMonth === 4) return true;
+      if (!rule.includes('첫째') && !rule.includes('둘째') && !rule.includes('셋째') && !rule.includes('넷째')) return true;
     }
 
     return false;
   });
+}
+
+function containsShortDayAsWord(rule: string, shortName: string): boolean {
+  for (let i = 0; i < rule.length; i++) {
+    if (rule[i] !== shortName) continue;
+    // Skip if this char is the start of the full day name (shortName + '요')
+    if (rule[i + 1] === '요') continue;
+    // Must be at the start of the string or preceded by a word separator
+    if (i > 0 && rule[i - 1] !== ' ' && rule[i - 1] !== '+' && rule[i - 1] !== ',') continue;
+    return true;
+  }
+  return false;
 }
 
 function toMinutes(value: string) {

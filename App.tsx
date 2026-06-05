@@ -12,6 +12,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  StatusBar as RNStatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -270,8 +271,11 @@ export default function App() {
 
   async function refreshLibraryData() {
     setLibraryDataLoading(true);
-    setLibraryData(await loadLibraryData());
-    setLibraryDataLoading(false);
+    try {
+      setLibraryData(await loadLibraryData());
+    } finally {
+      setLibraryDataLoading(false);
+    }
   }
 
   async function openUrl(url: string, fallbackMessage: string) {
@@ -763,7 +767,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f7f8fb',
     paddingBottom: 18,
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 28 : 16,
+    paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight || 28) + 8 : 16,
   },
   brandRow: {
     alignItems: 'center',
@@ -892,12 +896,17 @@ const styles = StyleSheet.create({
   metricCard: {
     backgroundColor: '#ffffff',
     borderColor: '#e2e8f0',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     flex: 1,
     minHeight: 74,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
   },
   metricLabel: {
     color: '#64748b',
@@ -947,12 +956,17 @@ const styles = StyleSheet.create({
   searchInput: {
     backgroundColor: '#ffffff',
     borderColor: '#e2e8f0',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     color: '#0b1220',
     fontSize: 15,
-    minHeight: 48,
-    paddingHorizontal: 14,
+    minHeight: 52,
+    paddingHorizontal: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
   },
   filterRow: {
     gap: 6,
@@ -1086,9 +1100,14 @@ const styles = StyleSheet.create({
   libraryCard: {
     backgroundColor: '#ffffff',
     borderColor: '#e2e8f0',
-    borderRadius: 8,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
+    padding: 16,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
   },
   cardHeader: {
     alignItems: 'flex-start',
