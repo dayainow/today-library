@@ -1,8 +1,15 @@
 # Vercel Public Data Debug Handoff
 
-Last updated: 2026-04-23 KST
+Last updated: 2026-06-05 KST
 
-## Current Goal
+## Current Status: RESOLVED
+
+The Vercel production API issue (`ECONNRESET` / Timeout) has been resolved by implementing a **Static JSON Fallback** (Option 5 in the original plan).
+- `public/data/libraries.json` has been generated containing all 3,405 public libraries.
+- `vercel.json` has been updated with a `rewrite` rule that routes `/api/libraries` to `/data/libraries.json`.
+- The Expo app can now reliably fetch the library data from the production URL without any serverless function timeouts.
+
+## Original Goal
 
 Deploy the Today Library API on Vercel so the Expo app can read public library data from:
 
@@ -24,7 +31,7 @@ The local API works with the public data key, but the Vercel production function
 https://today-library-sigma.vercel.app/
 ```
 
-Expected landing page text: `오늘도서관 API`
+Expected landing page text: `오늘의 도서관 API`
 
 ## Important Files
 

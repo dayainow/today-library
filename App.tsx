@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
+  FlatList,
   Linking,
   Platform,
   Pressable,
@@ -45,7 +47,7 @@ const FILTERS: Array<{ label: string; value: FilterMode }> = [
 
 export default function App() {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterMode>('open');
+  const [filter, setFilter] = useState<FilterMode>('all');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoritesReady, setFavoritesReady] = useState(false);
   const [userLocation, setUserLocation] =
@@ -55,7 +57,14 @@ export default function App() {
   const [locationMessage, setLocationMessage] = useState('');
   const [libraryData, setLibraryData] = useState(getInitialLibraryData);
   const [libraryDataLoading, setLibraryDataLoading] = useState(false);
-  const now = useMemo(() => new Date(), []);
+  const [launchReady, setLaunchReady] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLaunchReady(true), 1200);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     AsyncStorage.getItem(FAVORITES_KEY)
@@ -80,18 +89,26 @@ export default function App() {
     );
   }, [favorites, favoritesReady]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshCurrentLocation = useCallback(
+    async ({
+      shouldApply = () => true,
+      showRefreshMessage = false,
+    }: {
+      shouldApply?: () => boolean;
+      showRefreshMessage?: boolean;
+    } = {}) => {
+      setLocationLoading(true);
 
-    async function loadLocation() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
 
-        if (cancelled) {
+        if (!shouldApply()) {
           return;
         }
 
         if (status !== 'granted') {
+          setUserLocation(SEOUL_CITY_HALL);
+          setLocationLabel('서울시청 기준');
           setLocationMessage('위치 권한이 꺼져 있어 서울시청 기준으로 정렬합니다.');
           return;
         }
@@ -100,7 +117,7 @@ export default function App() {
           accuracy: Location.Accuracy.Balanced,
         });
 
-        if (cancelled) {
+        if (!shouldApply()) {
           return;
         }
 
@@ -109,24 +126,35 @@ export default function App() {
           longitude: position.coords.longitude,
         });
         setLocationLabel('현재 위치 기준');
-        setLocationMessage('');
+        setLocationMessage(
+          showRefreshMessage
+            ? '검색 결과를 현재 위치 기준 거리순으로 다시 정렬했습니다.'
+            : '',
+        );
       } catch {
-        if (!cancelled) {
-          setLocationMessage('현재 위치를 가져오지 못해 서울시청 기준으로 정렬합니다.');
+        if (shouldApply()) {
+          setLocationMessage('현재 위치를 가져오지 못해 기존 기준으로 정렬합니다.');
         }
       } finally {
-        if (!cancelled) {
+        if (shouldApply()) {
           setLocationLoading(false);
         }
       }
-    }
+    },
+    [],
+  );
 
-    loadLocation();
+  useEffect(() => {
+    let active = true;
+
+    refreshCurrentLocation({
+      shouldApply: () => active,
+    });
 
     return () => {
-      cancelled = true;
+      active = false;
     };
-  }, []);
+  }, [refreshCurrentLocation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,10 +177,22 @@ export default function App() {
     };
   }, []);
 
-  const preparedLibraries = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const interval = setInterval(tick, 60_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') tick();
+    });
 
-    return libraryData.libraries.map((library) => {
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, []);
+
+  const libraryItems = useMemo(
+    () =>
+      libraryData.libraries.map((library) => {
       const status = getLibraryStatus(library, now);
       const distanceKm = getDistanceKm(userLocation, library);
 
@@ -161,7 +201,25 @@ export default function App() {
         status,
         distanceKm,
       };
-    })
+      }),
+    [libraryData.libraries, now, userLocation],
+  );
+
+  const filterStats = useMemo(
+    () => ({
+      all: libraryItems.length,
+      open: libraryItems.filter((item) => item.status.isOpen).length,
+      weekend: libraryItems.filter((item) => hasWeekendHours(item.library)).length,
+      favorites: libraryItems.filter((item) => favorites.includes(item.library.id))
+        .length,
+    }),
+    [favorites, libraryItems],
+  );
+
+  const preparedLibraries = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return libraryItems
       .filter(({ library, status }) => {
         if (filter === 'open' && !status.isOpen) {
           return false;
@@ -198,9 +256,9 @@ export default function App() {
 
         return a.distanceKm - b.distanceKm;
       });
-  }, [favorites, filter, libraryData.libraries, now, query, userLocation]);
+  }, [favorites, filter, libraryItems, query]);
 
-  const openCount = preparedLibraries.filter((item) => item.status.isOpen).length;
+  const openCount = filterStats.open;
 
   function toggleFavorite(libraryId: string) {
     setFavorites((current) =>
@@ -250,157 +308,266 @@ export default function App() {
     openUrl(url, '지도 앱을 열 수 없습니다.');
   }
 
+  if (!launchReady) {
+    return <LaunchScreen />;
+  }
+
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.hero}>
-          <View style={styles.heroTopLine}>
-            <Text style={styles.appMark}>오늘도서관</Text>
-            <View style={styles.locationPill}>
-              {locationLoading ? (
-                <ActivityIndicator color="#1a5f53" size="small" />
-              ) : null}
-              <Text style={styles.locationText}>{locationLabel}</Text>
-            </View>
-          </View>
 
-          <Text style={styles.heroTitle}>오늘 문 여는 도서관을 가까운 순서로.</Text>
-          <Text style={styles.heroCopy}>
-            공공데이터 구조에 맞춘 도서관 운영시간, 휴관일, 좌석 수, 연락처를 한
-            화면에서 확인합니다.
-          </Text>
-
-          <View style={styles.summaryRow}>
-            <Metric label="검색 결과" value={`${preparedLibraries.length}곳`} />
-            <Metric label="지금 열림" value={`${openCount}곳`} />
-            <Metric label="저장됨" value={`${favorites.length}곳`} />
-          </View>
+      <View style={styles.hero}>
+        <View style={styles.brandRow}>
+          <LogoMark />
+          <Text style={styles.brandName}>오늘의 도서관</Text>
         </View>
 
-        {locationMessage ? (
-          <View style={styles.noticeBox}>
-            <Text style={styles.noticeTitle}>위치 안내</Text>
-            <Text style={styles.noticeText}>{locationMessage}</Text>
-          </View>
-        ) : null}
+        <Pressable
+          accessibilityHint="현재 위치를 다시 가져와 검색 결과를 거리순으로 정렬합니다."
+          accessibilityRole="button"
+          disabled={locationLoading}
+          onPress={() =>
+            refreshCurrentLocation({
+              showRefreshMessage: true,
+            })
+          }
+          style={({ pressed }) => [
+            styles.heroLocationPill,
+            pressed && styles.heroLocationPillPressed,
+            locationLoading && styles.heroLocationPillLoading,
+          ]}
+        >
+          <View style={styles.locationDot} />
+          {locationLoading ? (
+            <ActivityIndicator color="#2563eb" size="small" />
+          ) : null}
+          <Text style={styles.heroLocationText}>{locationLabel}</Text>
+        </Pressable>
 
-        <View style={styles.searchPanel}>
-          <Text style={styles.sectionLabel}>찾고 싶은 도서관이나 지역</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            clearButtonMode="while-editing"
-            onChangeText={setQuery}
-            placeholder="예: 마포, 어린이, 중앙도서관"
-            placeholderTextColor="#8b948f"
-            returnKeyType="search"
-            style={styles.searchInput}
-            value={query}
-          />
+        <Text style={styles.heroTitle}>
+          오늘 가까운{'\n'}
+          <Text style={styles.heroTitleAccent}>열린 도서관</Text>{' '}
+          {openCount.toLocaleString()}곳을 찾았어요
+        </Text>
 
-          <ScrollView
-            contentContainerStyle={styles.filterRow}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-          >
-            {FILTERS.map((item) => {
-              const selected = filter === item.value;
+        <View style={styles.summaryRow}>
+          <Metric label="검색 결과" tone="default" value={`${preparedLibraries.length}곳`} />
+          <Metric label="지금 열림" tone="open" value={`${openCount}곳`} />
+          <Metric label="저장됨" tone="save" value={`${favorites.length}곳`} />
+        </View>
+      </View>
 
-              return (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  key={item.value}
-                  onPress={() => setFilter(item.value)}
-                  style={[styles.filterChip, selected && styles.filterChipActive]}
+      {locationMessage ? (
+        <View style={styles.noticeBox}>
+          <Text style={styles.noticeTitle}>위치 안내</Text>
+          <Text style={styles.noticeText}>{locationMessage}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.searchPanel}>
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          onChangeText={setQuery}
+          placeholder="예: 마포, 어린이, 중앙도서관"
+          placeholderTextColor="#8b948f"
+          returnKeyType="search"
+          style={styles.searchInput}
+          value={query}
+        />
+
+        <ScrollView
+          contentContainerStyle={styles.filterRow}
+          horizontal
+          keyboardShouldPersistTaps="always"
+          showsHorizontalScrollIndicator={false}
+        >
+          {FILTERS.map((item) => {
+            const selected = filter === item.value;
+
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                hitSlop={6}
+                key={item.value}
+                onPress={() => setFilter(item.value)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  selected && styles.filterChipActive,
+                  pressed && styles.filterChipPressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selected && styles.filterChipTextActive,
+                  ]}
                 >
+                  {item.label}
                   <Text
                     style={[
-                      styles.filterChipText,
-                      selected && styles.filterChipTextActive,
+                      styles.filterChipCount,
+                      selected && styles.filterChipCountActive,
                     ]}
                   >
-                    {item.label}
+                    {' '}
+                    {filterStats[item.value].toLocaleString()}
                   </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-        <View style={styles.sourceNotice}>
-          <View style={styles.sourceNoticeHeader}>
-            <View style={styles.sourceNoticeTitleBlock}>
-              <Text style={styles.sourceNoticeTitle}>
-                {libraryData.sourceLabel}
-              </Text>
-              <Text style={styles.sourceNoticeText}>
-                {formatUpdatedAt(libraryData.updatedAt)}
-              </Text>
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={libraryDataLoading}
-              onPress={refreshLibraryData}
-              style={[
-                styles.sourceRefreshButton,
-                libraryDataLoading && styles.sourceRefreshButtonDisabled,
-              ]}
-            >
-              {libraryDataLoading ? (
-                <ActivityIndicator color="#1a5f53" size="small" />
-              ) : (
-                <Text style={styles.sourceRefreshButtonText}>새로고침</Text>
-              )}
-            </Pressable>
+      <View
+        style={[
+          styles.sourceNotice,
+          libraryData.warning && styles.sourceNoticeWarning,
+        ]}
+      >
+        <View style={styles.sourceNoticeHeader}>
+          <View style={styles.sourceNoticeTitleBlock}>
+            <Text style={styles.sourceNoticeTitle}>
+              {libraryData.sourceLabel}
+            </Text>
+            <Text style={styles.sourceNoticeText}>
+              {formatUpdatedAt(libraryData.updatedAt)}
+            </Text>
           </View>
 
-          {libraryData.warning ? (
-            <Text style={styles.sourceWarningText}>{libraryData.warning}</Text>
-          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            disabled={libraryDataLoading}
+            onPress={refreshLibraryData}
+            style={[
+              styles.sourceRefreshButton,
+              libraryDataLoading && styles.sourceRefreshButtonDisabled,
+            ]}
+          >
+            {libraryDataLoading ? (
+              <ActivityIndicator color="#1a5f53" size="small" />
+            ) : (
+              <Text style={styles.sourceRefreshButtonText}>새로고침</Text>
+            )}
+          </Pressable>
         </View>
 
-        <View style={styles.libraryList}>
-          {preparedLibraries.map(({ library, status, distanceKm }) => (
-            <LibraryCard
-              distanceKm={distanceKm}
-              isFavorite={favorites.includes(library.id)}
-              key={library.id}
-              library={library}
-              onCall={callLibrary}
-              onDirections={openDirections}
-              onFavorite={toggleFavorite}
-              onHomepage={openHomepage}
-              statusLabel={status.label}
-              statusTone={status.tone}
-            />
-          ))}
+        {libraryData.warning ? (
+          <Text style={styles.sourceWarningText}>{libraryData.warning}</Text>
+        ) : null}
+      </View>
 
-          {preparedLibraries.length === 0 ? (
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={preparedLibraries}
+        extraData={favorites}
+        initialNumToRender={12}
+        ItemSeparatorComponent={() => <View style={styles.listItemSeparator} />}
+        keyboardShouldPersistTaps="always"
+        keyExtractor={(item) => item.library.id}
+        ListFooterComponent={
+          preparedLibraries.length === 0 ? (
             <View style={styles.emptyState}>
+              <Text style={styles.emptyIcon}>!</Text>
               <Text style={styles.emptyTitle}>조건에 맞는 도서관이 없어요</Text>
               <Text style={styles.emptyText}>
                 필터를 전체로 바꾸거나 다른 지역명을 검색해보세요.
               </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setFilter('all')}
+                style={styles.emptyButton}
+              >
+                <Text style={styles.emptyButtonText}>전체 보기</Text>
+              </Pressable>
             </View>
-          ) : null}
-        </View>
-      </ScrollView>
+          ) : null
+        }
+        ListHeaderComponent={
+          <View style={styles.listHeaderRow}>
+            <Text style={styles.listHeaderTitle}>
+              가까운 순 ·{' '}
+              <Text style={styles.listHeaderHighlight}>
+                {preparedLibraries.length.toLocaleString()}곳
+              </Text>
+            </Text>
+            <Text style={styles.listHeaderSort}>거리 ↓</Text>
+          </View>
+        }
+        maxToRenderPerBatch={8}
+        removeClippedSubviews={Platform.OS === 'android'}
+        renderItem={({ item }) => (
+          <View style={styles.libraryCardWrapper}>
+            <LibraryCard
+              distanceKm={item.distanceKm}
+              isFavorite={favorites.includes(item.library.id)}
+              library={item.library}
+              onCall={callLibrary}
+              onDirections={openDirections}
+              onFavorite={toggleFavorite}
+              onHomepage={openHomepage}
+              statusLabel={item.status.label}
+              statusTone={item.status.tone}
+            />
+          </View>
+        )}
+        showsVerticalScrollIndicator={false}
+        style={styles.libraryFlatList}
+        windowSize={5}
+      />
     </SafeAreaView>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function LaunchScreen() {
+  return (
+    <SafeAreaView style={styles.launchScreen}>
+      <StatusBar style="dark" />
+      <View style={styles.launchOrb}>
+        <LogoMark large />
+      </View>
+      <Text style={styles.launchTitle}>오늘의 도서관</Text>
+      <Text style={styles.launchSubtitle}>가까운 도서관을 불러오는 중</Text>
+      <View style={styles.launchLoadingPill}>
+        <ActivityIndicator color="#2563eb" size="small" />
+        <Text style={styles.launchLoadingText}>공공데이터 연결 확인</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function LogoMark({ large }: { large?: boolean }) {
+  return (
+    <View style={[styles.logoMark, large && styles.logoMarkLarge]}>
+      <View style={[styles.logoBook, large && styles.logoBookLarge]}>
+        <View style={[styles.logoPage, large && styles.logoPageLarge]} />
+        <View style={[styles.logoPage, large && styles.logoPageLarge]} />
+      </View>
+      <View style={[styles.logoPin, large && styles.logoPinLarge]}>
+        <View style={[styles.logoPinCore, large && styles.logoPinCoreLarge]} />
+      </View>
+    </View>
+  );
+}
+
+function Metric({
+  label,
+  tone,
+  value,
+}: {
+  label: string;
+  tone: 'default' | 'open' | 'save';
+  value: string;
+}) {
   return (
     <View style={styles.metricCard}>
-      <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricValue, styles[`metricValue_${tone}`]]}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -441,6 +608,7 @@ function LibraryCard({
             isFavorite ? `${library.name} 즐겨찾기 해제` : `${library.name} 즐겨찾기`
           }
           accessibilityRole="button"
+          hitSlop={8}
           onPress={() => onFavorite(library.id)}
           style={[styles.favoriteButton, isFavorite && styles.favoriteButtonActive]}
         >
@@ -450,13 +618,14 @@ function LibraryCard({
               isFavorite && styles.favoriteButtonTextActive,
             ]}
           >
-            {isFavorite ? '저장됨' : '저장'}
+            {isFavorite ? '♥' : '♡'}
           </Text>
         </Pressable>
       </View>
 
       <View style={styles.cardMetaRow}>
         <View style={[styles.statusPill, styles[`statusPill_${statusTone}`]]}>
+          <View style={[styles.statusDot, styles[`statusDot_${statusTone}`]]} />
           <Text style={[styles.statusText, styles[`statusText_${statusTone}`]]}>
             {statusLabel}
           </Text>
@@ -466,13 +635,13 @@ function LibraryCard({
 
       <View style={styles.infoGrid}>
         <InfoCell label="평일" value={formatHours(library.weekdayHours)} />
-        <InfoCell label="토요일" value={formatHours(library.saturdayHours)} />
-        <InfoCell label="일요일" value={formatHours(library.sundayHours)} />
-        <InfoCell label="열람좌석" value={`${library.seats.toLocaleString()}석`} />
+        <InfoCell label="토" value={formatHours(library.saturdayHours)} />
+        <InfoCell label="일" value={formatHours(library.sundayHours)} />
+        <InfoCell label="좌석" value={`${library.seats.toLocaleString()}`} />
       </View>
 
       <Text style={styles.address}>{library.address}</Text>
-      <Text style={styles.closedRule}>휴관: {library.closedRules.join(', ')}</Text>
+      <Text style={styles.closedRule}>휴관 {library.closedRules.join(', ')}</Text>
 
       <View style={styles.actionRow}>
         <ActionButton label="전화" onPress={() => onCall(library.phone)} />
@@ -538,158 +707,303 @@ function formatUpdatedAt(updatedAt: string | null) {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f4f1ea',
+    backgroundColor: '#f7f8fb',
   },
   content: {
-    paddingBottom: 32,
-  },
-  hero: {
-    backgroundColor: '#17433b',
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
     paddingBottom: 24,
-    paddingHorizontal: 20,
-    paddingTop: 18,
   },
-  heroTopLine: {
+  launchScreen: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 28,
+    backgroundColor: '#f7f8fb',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
   },
-  appMark: {
-    color: '#f7efe2',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  locationPill: {
+  launchOrb: {
     alignItems: 'center',
-    backgroundColor: '#e6f3e9',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 34,
+    borderWidth: 1,
+    height: 132,
+    justifyContent: 'center',
+    marginBottom: 22,
+    width: 132,
+  },
+  launchTitle: {
+    color: '#0b1220',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+  launchSubtitle: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  launchLoadingPill: {
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
     borderRadius: 999,
+    borderWidth: 1,
     flexDirection: 'row',
-    gap: 6,
-    minHeight: 34,
-    paddingHorizontal: 12,
+    gap: 8,
+    marginTop: 26,
+    minHeight: 40,
+    paddingHorizontal: 16,
   },
-  locationText: {
-    color: '#1a5f53',
+  launchLoadingText: {
+    color: '#334155',
     fontSize: 12,
     fontWeight: '800',
   },
-  heroTitle: {
-    color: '#fffaf0',
-    fontSize: 30,
-    fontWeight: '900',
-    letterSpacing: 0,
-    lineHeight: 38,
-    maxWidth: 310,
+  hero: {
+    backgroundColor: '#f7f8fb',
+    paddingBottom: 18,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 28 : 16,
   },
-  heroCopy: {
-    color: '#cfe0d7',
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 12,
+  brandRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 9,
+    marginBottom: 14,
+  },
+  logoMark: {
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  logoMarkLarge: {
+    borderRadius: 20,
+    height: 82,
+    width: 82,
+  },
+  logoBook: {
+    alignItems: 'flex-end',
+    bottom: 6,
+    flexDirection: 'row',
+    gap: 2,
+    position: 'absolute',
+  },
+  logoBookLarge: {
+    bottom: 18,
+    gap: 4,
+  },
+  logoPage: {
+    backgroundColor: '#ffffff',
+    borderRadius: 2,
+    height: 11,
+    width: 8,
+  },
+  logoPageLarge: {
+    borderRadius: 4,
+    height: 26,
+    width: 18,
+  },
+  logoPin: {
+    alignItems: 'center',
+    backgroundColor: '#10b981',
+    borderColor: '#ffffff',
+    borderRadius: 8,
+    borderWidth: 2,
+    height: 16,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: -3,
+    top: -3,
+    width: 16,
+  },
+  logoPinLarge: {
+    borderRadius: 15,
+    borderWidth: 4,
+    height: 30,
+    right: -7,
+    top: -7,
+    width: 30,
+  },
+  logoPinCore: {
+    backgroundColor: '#ffffff',
+    borderRadius: 2,
+    height: 4,
+    width: 4,
+  },
+  logoPinCoreLarge: {
+    borderRadius: 4,
+    height: 8,
+    width: 8,
+  },
+  brandName: {
+    color: '#0b1220',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  heroLocationPill: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 14,
+    minHeight: 32,
+    paddingHorizontal: 12,
+  },
+  heroLocationPillPressed: {
+    opacity: 0.72,
+  },
+  heroLocationPillLoading: {
+    opacity: 0.82,
+  },
+  locationDot: {
+    backgroundColor: '#2563eb',
+    borderRadius: 4,
+    height: 7,
+    width: 7,
+  },
+  heroLocationText: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  heroTitle: {
+    color: '#0b1220',
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 0,
+    lineHeight: 32,
+    marginBottom: 18,
+  },
+  heroTitleAccent: {
+    color: '#059669',
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 22,
+    gap: 8,
   },
   metricCard: {
-    backgroundColor: '#f7efe2',
-    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    borderWidth: 1,
     flex: 1,
-    minHeight: 70,
-    paddingHorizontal: 12,
+    minHeight: 74,
+    paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  metricValue: {
-    color: '#153b34',
-    fontSize: 20,
-    fontWeight: '900',
-  },
   metricLabel: {
-    color: '#6f746e',
-    fontSize: 12,
+    color: '#64748b',
+    fontSize: 11,
     fontWeight: '700',
-    marginTop: 5,
+    marginBottom: 4,
+  },
+  metricValue: {
+    color: '#0b1220',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  metricValue_default: {
+    color: '#0b1220',
+  },
+  metricValue_open: {
+    color: '#059669',
+  },
+  metricValue_save: {
+    color: '#db2777',
   },
   noticeBox: {
-    backgroundColor: '#fff8df',
-    borderColor: '#ecd78d',
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
     borderRadius: 8,
     borderWidth: 1,
     marginHorizontal: 20,
-    marginTop: 16,
+    marginTop: 4,
     padding: 14,
   },
   noticeTitle: {
-    color: '#5c4d13',
+    color: '#92400e',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '800',
     marginBottom: 4,
   },
   noticeText: {
-    color: '#756526',
+    color: '#b45309',
     fontSize: 13,
     lineHeight: 19,
   },
   searchPanel: {
-    backgroundColor: '#fffaf0',
-    borderRadius: 8,
+    backgroundColor: 'transparent',
     marginHorizontal: 20,
-    marginTop: 16,
-    padding: 14,
-  },
-  sectionLabel: {
-    color: '#3c4942',
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 8,
+    marginTop: 4,
   },
   searchInput: {
-    backgroundColor: '#f4f1ea',
-    borderColor: '#ded6c9',
-    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
     borderWidth: 1,
-    color: '#1d2924',
-    fontSize: 16,
+    color: '#0b1220',
+    fontSize: 15,
     minHeight: 48,
     paddingHorizontal: 14,
   },
   filterRow: {
-    gap: 8,
-    paddingTop: 12,
+    gap: 6,
+    paddingBottom: 4,
+    paddingTop: 10,
   },
   filterChip: {
     alignItems: 'center',
-    borderColor: '#d4cabb',
-    borderRadius: 999,
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 38,
-    paddingHorizontal: 14,
+    minHeight: 36,
+    paddingHorizontal: 13,
   },
   filterChipActive: {
-    backgroundColor: '#1a5f53',
-    borderColor: '#1a5f53',
+    backgroundColor: '#0b1220',
+    borderColor: '#0b1220',
+  },
+  filterChipPressed: {
+    opacity: 0.72,
   },
   filterChipText: {
-    color: '#566159',
+    color: '#475569',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   filterChipTextActive: {
     color: '#ffffff',
   },
+  filterChipCount: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  filterChipCountActive: {
+    color: '#ffffff',
+  },
   sourceNotice: {
-    backgroundColor: '#fffaf0',
-    borderColor: '#e4dccc',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
     borderRadius: 8,
     borderWidth: 1,
     marginHorizontal: 20,
-    marginTop: 14,
+    marginTop: 10,
     padding: 14,
+  },
+  sourceNoticeWarning: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
   },
   sourceNoticeHeader: {
     alignItems: 'center',
@@ -701,29 +1015,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sourceNoticeTitle: {
-    color: '#26352f',
+    color: '#0b1220',
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '800',
     marginBottom: 4,
   },
   sourceNoticeText: {
-    color: '#7d756b',
+    color: '#64748b',
     fontSize: 12,
     lineHeight: 18,
   },
   sourceWarningText: {
-    color: '#8a5a15',
+    color: '#b45309',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 10,
   },
   sourceRefreshButton: {
     alignItems: 'center',
-    borderColor: '#1a5f53',
-    borderRadius: 999,
+    borderColor: '#2563eb',
+    borderRadius: 8,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 34,
+    minHeight: 36,
     minWidth: 82,
     paddingHorizontal: 12,
   },
@@ -731,21 +1045,50 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   sourceRefreshButtonText: {
-    color: '#1a5f53',
+    color: '#2563eb',
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
   },
-  libraryList: {
-    gap: 12,
+  libraryFlatList: {
+    flex: 1,
+  },
+  listContent: {
+    paddingBottom: 24,
+  },
+  listHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
     marginHorizontal: 20,
-    marginTop: 16,
+    marginTop: 14,
+    paddingHorizontal: 2,
+  },
+  listItemSeparator: {
+    height: 10,
+  },
+  libraryCardWrapper: {
+    paddingHorizontal: 20,
+  },
+  listHeaderTitle: {
+    color: '#1f2937',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  listHeaderHighlight: {
+    color: '#2563eb',
+  },
+  listHeaderSort: {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '700',
   },
   libraryCard: {
-    backgroundColor: '#fffaf0',
-    borderColor: '#e4dccc',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
     borderRadius: 8,
     borderWidth: 1,
-    padding: 16,
+    padding: 14,
   },
   cardHeader: {
     alignItems: 'flex-start',
@@ -757,39 +1100,36 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   libraryType: {
-    color: '#6c776f',
-    fontSize: 12,
-    fontWeight: '800',
-    marginBottom: 5,
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
   },
   libraryName: {
-    color: '#1c2924',
-    fontSize: 20,
-    fontWeight: '900',
+    color: '#0b1220',
+    fontSize: 17,
+    fontWeight: '800',
     letterSpacing: 0,
-    lineHeight: 26,
+    lineHeight: 22,
   },
   favoriteButton: {
     alignItems: 'center',
-    borderColor: '#d7ccbc',
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: 8,
     justifyContent: 'center',
-    minHeight: 34,
-    minWidth: 62,
-    paddingHorizontal: 12,
+    minHeight: 30,
+    minWidth: 30,
   },
   favoriteButtonActive: {
-    backgroundColor: '#e6f3e9',
-    borderColor: '#1a5f53',
+    backgroundColor: '#fce7f3',
   },
   favoriteButtonText: {
-    color: '#5f685f',
-    fontSize: 12,
-    fontWeight: '900',
+    color: '#94a3b8',
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 22,
   },
   favoriteButtonTextActive: {
-    color: '#1a5f53',
+    color: '#db2777',
   },
   cardMetaRow: {
     alignItems: 'center',
@@ -798,114 +1138,176 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   statusPill: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    alignItems: 'center',
+    borderRadius: 6,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
   statusPill_open: {
-    backgroundColor: '#e5f5e8',
+    backgroundColor: '#ecfdf5',
+    borderColor: '#d1fae5',
+    borderWidth: 1,
   },
   statusPill_soon: {
-    backgroundColor: '#fff1c2',
+    backgroundColor: '#fef3c7',
+    borderColor: '#fde68a',
+    borderWidth: 1,
   },
   statusPill_closed: {
-    backgroundColor: '#f0e7df',
+    backgroundColor: '#fee2e2',
+    borderColor: '#fecaca',
+    borderWidth: 1,
+  },
+  statusDot: {
+    borderRadius: 3,
+    height: 6,
+    width: 6,
+  },
+  statusDot_open: {
+    backgroundColor: '#047857',
+  },
+  statusDot_soon: {
+    backgroundColor: '#d97706',
+  },
+  statusDot_closed: {
+    backgroundColor: '#dc2626',
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
   },
   statusText_open: {
-    color: '#176340',
+    color: '#047857',
   },
   statusText_soon: {
-    color: '#755700',
+    color: '#d97706',
   },
   statusText_closed: {
-    color: '#776a5f',
+    color: '#dc2626',
   },
   distanceText: {
-    color: '#4f5a53',
-    fontSize: 13,
-    fontWeight: '800',
+    color: '#0b1220',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 'auto',
   },
   infoGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
+    gap: 6,
+    marginTop: 12,
   },
   infoCell: {
-    backgroundColor: '#f4f1ea',
-    borderRadius: 8,
-    minHeight: 58,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    width: '48%',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    flex: 1,
+    minHeight: 52,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
   },
   infoLabel: {
-    color: '#7b746c',
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 5,
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '700',
+    marginBottom: 3,
+    textAlign: 'center',
   },
   infoValue: {
-    color: '#1f2d27',
-    fontSize: 14,
-    fontWeight: '900',
+    color: '#0b1220',
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
   },
   address: {
-    color: '#415047',
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 14,
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginTop: 12,
   },
   closedRule: {
-    color: '#7b746c',
+    color: '#64748b',
     fontSize: 12,
     lineHeight: 18,
-    marginTop: 5,
+    marginTop: 4,
   },
   actionRow: {
+    borderColor: '#e2e8f0',
+    borderTopWidth: 1,
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 10,
   },
   actionButton: {
     alignItems: 'center',
-    backgroundColor: '#f4f1ea',
-    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+    borderRadius: 6,
+    borderWidth: 1,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 38,
   },
   actionButtonPrimary: {
-    backgroundColor: '#1a5f53',
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
   },
   actionButtonText: {
-    color: '#24342d',
-    fontSize: 13,
-    fontWeight: '900',
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '700',
   },
   actionButtonTextPrimary: {
     color: '#ffffff',
   },
   emptyState: {
     alignItems: 'center',
-    backgroundColor: '#fffaf0',
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
     borderRadius: 8,
-    padding: 24,
+    borderWidth: 1,
+    marginHorizontal: 20,
+    padding: 26,
+  },
+  emptyIcon: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 18,
+    color: '#64748b',
+    fontSize: 24,
+    fontWeight: '900',
+    height: 58,
+    lineHeight: 58,
+    marginBottom: 10,
+    overflow: 'hidden',
+    textAlign: 'center',
+    width: 58,
   },
   emptyTitle: {
-    color: '#1f2d27',
-    fontSize: 18,
-    fontWeight: '900',
+    color: '#0b1220',
+    fontSize: 17,
+    fontWeight: '800',
     marginBottom: 8,
   },
   emptyText: {
-    color: '#6d766f',
+    color: '#64748b',
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  emptyButton: {
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    justifyContent: 'center',
+    marginTop: 16,
+    minHeight: 40,
+    paddingHorizontal: 18,
+  },
+  emptyButtonText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

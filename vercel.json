@@ -10,5 +10,35 @@
       "path": "/api/cron/refresh-libraries",
       "schedule": "0 18 * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/privacy",
+      "destination": "/api/privacy",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/libraries",
+      "destination": "/data/libraries.json"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/libraries",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Accept, Content-Type" }
+      ]
+    },
+    {
+      "source": "/api/index",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" }
+      ]
+    }
   ]
 }

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "오늘도서관",
+    "name": "오늘의 도서관",
     "slug": "today-library",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,13 +10,16 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F7F8FB"
     },
     "ios": {
       "bundleIdentifier": "com.dobedub.todaylibrary",
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "가까운 도서관을 거리순으로 보여주기 위해 현재 위치를 사용합니다."
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
       }
     },
     "android": {
@@ -27,13 +30,19 @@
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#F7F8FB"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "90dbb139-382e-495f-b419-28ccf2d2d852"
+      }
+    },
+    "privacy": "https://today-library.vercel.app/api/privacy"
   }
 }

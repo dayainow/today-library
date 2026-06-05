@@ -277,7 +277,7 @@ function toLibrary(row: PublicDataRow): Library | null {
     new Date().toISOString().slice(0, 10);
 
   return {
-    id: createStableId(row, name, city, district),
+    id: createStableId(row, name, city, district, address, latitude, longitude),
     name,
     type: pickString(row, ['LBRRY_SE', 'lbrrySe', 'type']) ?? '공공도서관',
     city,
@@ -292,6 +292,7 @@ function toLibrary(row: PublicDataRow): Library | null {
       pickString(row, [
         'WEEKDAY_OPER_COLSE_HHMM',
         'WEEKDAY_OPER_CLOSE_HHMM',
+        'weekdayOperColseHhmm',
         'weekdayOperCloseHhmm',
       ]),
     ),
@@ -299,6 +300,7 @@ function toLibrary(row: PublicDataRow): Library | null {
       pickString(row, [
         'SAT_OPER_OPER_OPEN_HHMM',
         'SAT_OPER_OPEN_HHMM',
+        'satOperOperOpenHhmm',
         'satOperOpenHhmm',
       ]),
       pickString(row, ['SAT_OPER_CLOSE_HHMM', 'satOperCloseHhmm']),
@@ -371,9 +373,31 @@ function createStableId(
   name: string,
   city: string,
   district: string,
+  address: string,
+  latitude: number,
+  longitude: number,
 ) {
-  const providerCode = pickString(row, ['instt_code', 'INSTT_CODE']);
-  const source = `${providerCode ?? ''}:${city}:${district}:${name}`;
+  const providerCode = pickString(row, [
+    'instt_code',
+    'INSTT_CODE',
+    'insttCode',
+    'providerCode',
+  ]);
+  const managementAgency = pickString(row, [
+    'MANAGE_INSTT_NM',
+    'manageInsttNm',
+    'institutionName',
+  ]);
+  const source = [
+    providerCode ?? '',
+    managementAgency ?? '',
+    city,
+    district,
+    name,
+    address,
+    latitude.toFixed(8),
+    longitude.toFixed(8),
+  ].join(':');
   let hash = 0;
 
   for (let index = 0; index < source.length; index += 1) {
