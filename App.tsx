@@ -2,13 +2,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
+import mobileAds, {
   AdEventType,
   BannerAd,
   BannerAdSize,
   InterstitialAd,
   TestIds,
 } from 'react-native-google-mobile-ads';
+
+mobileAds()
+  .initialize()
+  .then((adapterStatuses) => {
+    console.log('AdMob initialization complete:', adapterStatuses);
+  })
+  .catch((error) => {
+    console.error('AdMob initialization failed:', error);
+  });
 import {
   ActivityIndicator,
   Alert,
@@ -69,7 +78,6 @@ export default function App() {
   const [locationLoading, setLocationLoading] = useState(true);
   const [locationMessage, setLocationMessage] = useState('');
   const [libraryData, setLibraryData] = useState(getInitialLibraryData);
-  const [libraryDataLoading, setLibraryDataLoading] = useState(false);
   const [launchReady, setLaunchReady] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [interstitialLoaded, setInterstitialLoaded] = useState(false);
@@ -165,9 +173,13 @@ export default function App() {
           return;
         }
 
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const LOCATION_TIMEOUT_MS = 10_000;
+        const position = await Promise.race([
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('location_timeout')), LOCATION_TIMEOUT_MS),
+          ),
+        ]);
 
         if (!shouldApply()) {
           return;
@@ -212,13 +224,10 @@ export default function App() {
     let cancelled = false;
 
     async function loadRemoteLibraries() {
-      setLibraryDataLoading(true);
-
       const nextLibraryData = await loadLibraryData();
 
       if (!cancelled) {
         setLibraryData(nextLibraryData);
-        setLibraryDataLoading(false);
       }
     }
 
@@ -318,17 +327,6 @@ export default function App() {
         ? current.filter((id) => id !== libraryId)
         : [...current, libraryId],
     );
-  }
-
-  async function refreshLibraryData() {
-    executeWithAd(async () => {
-      setLibraryDataLoading(true);
-      try {
-        setLibraryData(await loadLibraryData());
-      } finally {
-        setLibraryDataLoading(false);
-      }
-    });
   }
 
   async function openUrl(url: string, fallbackMessage: string) {
@@ -482,43 +480,11 @@ export default function App() {
         </ScrollView>
       </View>
 
-      <View
-        style={[
-          styles.sourceNotice,
-          libraryData.warning && styles.sourceNoticeWarning,
-        ]}
-      >
-        <View style={styles.sourceNoticeHeader}>
-          <View style={styles.sourceNoticeTitleBlock}>
-            <Text style={styles.sourceNoticeTitle}>
-              {libraryData.sourceLabel}
-            </Text>
-            <Text style={styles.sourceNoticeText}>
-              {formatUpdatedAt(libraryData.updatedAt)}
-            </Text>
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={libraryDataLoading}
-            onPress={refreshLibraryData}
-            style={[
-              styles.sourceRefreshButton,
-              libraryDataLoading && styles.sourceRefreshButtonDisabled,
-            ]}
-          >
-            {libraryDataLoading ? (
-              <ActivityIndicator color="#1a5f53" size="small" />
-            ) : (
-              <Text style={styles.sourceRefreshButtonText}>새로고침</Text>
-            )}
-          </Pressable>
+      {libraryData.warning ? (
+        <View style={styles.dataWarningBox}>
+          <Text style={styles.dataWarningText}>{libraryData.warning}</Text>
         </View>
-
-        {libraryData.warning ? (
-          <Text style={styles.sourceWarningText}>{libraryData.warning}</Text>
-        ) : null}
-      </View>
+      ) : null}
 
       <FlatList
         contentContainerStyle={styles.listContent}
@@ -779,13 +745,6 @@ function formatHours(hours: Library['weekdayHours']) {
   return `${hours.open}-${hours.close}`;
 }
 
-function formatUpdatedAt(updatedAt: string | null) {
-  if (!updatedAt) {
-    return '원격 캐시가 없을 때도 앱은 내장 데이터로 동작합니다.';
-  }
-
-  return `마지막 동기화: ${new Date(updatedAt).toLocaleString('ko-KR')}`;
-}
 
 const styles = StyleSheet.create({
   bannerContainer: {
@@ -1088,62 +1047,20 @@ const styles = StyleSheet.create({
   filterChipCountActive: {
     color: '#ffffff',
   },
-  sourceNotice: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
+  dataWarningBox: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
     borderRadius: 8,
     borderWidth: 1,
     marginHorizontal: 20,
-    marginTop: 10,
-    padding: 14,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  sourceNoticeWarning: {
-    backgroundColor: '#fffbeb',
-    borderColor: '#fde68a',
-  },
-  sourceNoticeHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'space-between',
-  },
-  sourceNoticeTitleBlock: {
-    flex: 1,
-  },
-  sourceNoticeTitle: {
-    color: '#0b1220',
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  sourceNoticeText: {
-    color: '#64748b',
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  sourceWarningText: {
+  dataWarningText: {
     color: '#b45309',
     fontSize: 12,
     lineHeight: 18,
-    marginTop: 10,
-  },
-  sourceRefreshButton: {
-    alignItems: 'center',
-    borderColor: '#2563eb',
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: 36,
-    minWidth: 82,
-    paddingHorizontal: 12,
-  },
-  sourceRefreshButtonDisabled: {
-    opacity: 0.65,
-  },
-  sourceRefreshButtonText: {
-    color: '#2563eb',
-    fontSize: 12,
-    fontWeight: '800',
   },
   libraryFlatList: {
     flex: 1,
