@@ -1,7 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AdEventType,
+  BannerAd,
+  BannerAdSize,
+  InterstitialAd,
+  TestIds,
+} from 'react-native-google-mobile-ads';
 import {
   ActivityIndicator,
   Alert,
@@ -46,6 +53,11 @@ const FILTERS: Array<{ label: string; value: FilterMode }> = [
   { label: '즐겨찾기', value: 'favorites' },
 ];
 
+const interstitial = InterstitialAd.createForAdRequest(TestIds.INTERSTITIAL, {
+  requestNonPersonalizedAdsOnly: true,
+  keywords: ['library', 'books', 'education'],
+});
+
 export default function App() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -60,6 +72,45 @@ export default function App() {
   const [libraryDataLoading, setLibraryDataLoading] = useState(false);
   const [launchReady, setLaunchReady] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [interstitialLoaded, setInterstitialLoaded] = useState(false);
+  const pendingActionRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const unsubscribeLoaded = interstitial.addAdEventListener(
+      AdEventType.LOADED,
+      () => {
+        setInterstitialLoaded(true);
+      },
+    );
+
+    const unsubscribeClosed = interstitial.addAdEventListener(
+      AdEventType.CLOSED,
+      () => {
+        setInterstitialLoaded(false);
+        interstitial.load();
+        if (pendingActionRef.current) {
+          pendingActionRef.current();
+          pendingActionRef.current = null;
+        }
+      },
+    );
+
+    interstitial.load();
+
+    return () => {
+      unsubscribeLoaded();
+      unsubscribeClosed();
+    };
+  }, []);
+
+  function executeWithAd(action: () => void) {
+    if (interstitialLoaded) {
+      pendingActionRef.current = action;
+      interstitial.show();
+    } else {
+      action();
+    }
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => setLaunchReady(true), 1200);
@@ -270,12 +321,14 @@ export default function App() {
   }
 
   async function refreshLibraryData() {
-    setLibraryDataLoading(true);
-    try {
-      setLibraryData(await loadLibraryData());
-    } finally {
-      setLibraryDataLoading(false);
-    }
+    executeWithAd(async () => {
+      setLibraryDataLoading(true);
+      try {
+        setLibraryData(await loadLibraryData());
+      } finally {
+        setLibraryDataLoading(false);
+      }
+    });
   }
 
   async function openUrl(url: string, fallbackMessage: string) {
@@ -302,14 +355,16 @@ export default function App() {
   }
 
   function openDirections(library: Library) {
-    const destination = `${library.latitude},${library.longitude}`;
-    const encodedName = encodeURIComponent(library.name);
-    const url =
-      Platform.OS === 'ios'
-        ? `http://maps.apple.com/?daddr=${destination}&q=${encodedName}`
-        : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
+    executeWithAd(() => {
+      const destination = `${library.latitude},${library.longitude}`;
+      const encodedName = encodeURIComponent(library.name);
+      const url =
+        Platform.OS === 'ios'
+          ? `http://maps.apple.com/?daddr=${destination}&q=${encodedName}`
+          : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
 
-    openUrl(url, '지도 앱을 열 수 없습니다.');
+      openUrl(url, '지도 앱을 열 수 없습니다.');
+    });
   }
 
   if (!launchReady) {
@@ -524,6 +579,15 @@ export default function App() {
         style={styles.libraryFlatList}
         windowSize={5}
       />
+      <View style={styles.bannerContainer}>
+        <BannerAd
+          unitId={TestIds.BANNER}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          requestOptions={{
+            requestNonPersonalizedAdsOnly: true,
+          }}
+        />
+      </View>
     </SafeAreaView>
   );
 }
@@ -724,6 +788,12 @@ function formatUpdatedAt(updatedAt: string | null) {
 }
 
 const styles = StyleSheet.create({
+  bannerContainer: {
+    alignItems: 'center',
+    backgroundColor: '#F7F8FB',
+    justifyContent: 'center',
+    width: '100%',
+  },
   screen: {
     flex: 1,
     backgroundColor: '#f7f8fb',
