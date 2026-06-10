@@ -110,33 +110,73 @@ export default function handler(_request: VercelRequest, response: VercelRespons
       앱을 삭제하면 함께 삭제됩니다.
     </p>
 
-    <h2>4. 제3자 제공</h2>
+    <h2>4. 광고</h2>
     <p>
-      수집한 개인정보를 <strong>어떠한 제3자에게도 제공하거나 판매하지 않습니다.</strong>
+      앱은 무료 서비스 유지를 위해 Google AdMob을 통해 광고를 표시할 수 있습니다.
+      광고 제공 과정에서 Google이 기기 식별자, IP 주소, 광고 상호작용 정보 등을 수집·처리할 수 있습니다.
+    </p>
+    <ul>
+      <li>광고 파트너: Google LLC (AdMob)</li>
+      <li>처리 목적: 맞춤형·비맞춤형 광고 게재, 광고 성과 측정</li>
+      <li>Google 개인정보 처리: <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google 개인정보처리방침</a></li>
+      <li>광고 설정: 기기 설정 &gt; Google &gt; 광고에서 맞춤형 광고를 제한할 수 있습니다.</li>
+    </ul>
+
+    <h2>5. 제3자 제공</h2>
+    <p>
+      앱 운영자는 사용자의 위치·즐겨찾기 정보를 제3자에게 판매하거나 제공하지 않습니다.
     </p>
     <p>
       앱은 공공데이터포털(data.go.kr)의 공공도서관 API를 통해 도서관 정보를 불러옵니다.
       이 과정에서 사용자 개인정보는 전달되지 않습니다.
     </p>
 
-    <h2>5. 외부 링크</h2>
+    <h2>6. 외부 링크</h2>
     <p>
       도서관 카드에서 외부 홈페이지나 지도 앱으로 이동할 수 있습니다.
       외부 서비스의 개인정보 처리는 해당 서비스의 방침을 따릅니다.
     </p>
 
-    <h2>6. 아동 개인정보</h2>
+    <h2>7. 아동 개인정보</h2>
     <p>
       앱은 만 14세 미만 아동으로부터 의도적으로 개인정보를 수집하지 않습니다.
     </p>
 
-    <h2>7. 방침 변경</h2>
+    <h2>8. 데이터 삭제 요청</h2>
+    <p>
+      <strong>${APP_NAME}</strong>은 회원 계정을 운영하지 않으며, 사용자 개인정보를 서버에 저장하지 않습니다.
+      데이터 삭제는 아래 방법으로 요청하거나 직접 수행할 수 있습니다.
+    </p>
+    <ul>
+      <li>
+        <span class="highlight">즐겨찾기</span> —
+        앱을 기기에서 삭제(제거)하면 기기에 저장된 즐겨찾기 데이터가 함께 삭제됩니다.
+      </li>
+      <li>
+        <span class="highlight">위치 정보</span> —
+        서버에 저장하지 않습니다. 앱 종료 시 메모리에서 삭제되며,
+        기기 설정에서 위치 권한을 해제할 수 있습니다.
+      </li>
+      <li>
+        <span class="highlight">광고 관련 데이터</span> —
+        Google AdMob이 처리하는 데이터는
+        <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google 개인정보처리방침</a> 및
+        기기 설정의 광고 ID 재설정·맞춤형 광고 제한을 통해 관리할 수 있습니다.
+      </li>
+      <li>
+        <span class="highlight">기타 문의·삭제 요청</span> —
+        아래 이메일로 앱 이름과 요청 내용을 보내 주시면 확인 후 안내드립니다.
+        이메일: <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>
+      </li>
+    </ul>
+
+    <h2>9. 방침 변경</h2>
     <p>
       본 방침이 변경될 경우 앱 내 공지 또는 이 페이지를 통해 안내합니다.
       변경된 방침은 게시 즉시 효력이 발생합니다.
     </p>
 
-    <h2>8. 문의</h2>
+    <h2>10. 문의</h2>
     <p>
       개인정보 처리방침에 대한 문의는 아래로 연락해 주세요.
     </p>
