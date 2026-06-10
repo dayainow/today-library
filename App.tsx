@@ -6,9 +6,9 @@ import mobileAds, {
   AdEventType,
   BannerAd,
   BannerAdSize,
-  InterstitialAd,
-  TestIds,
 } from 'react-native-google-mobile-ads';
+
+import { getBannerAdUnitId, getInterstitialAd } from './src/config/ads';
 
 mobileAds()
   .initialize()
@@ -62,11 +62,6 @@ const FILTERS: Array<{ label: string; value: FilterMode }> = [
   { label: '즐겨찾기', value: 'favorites' },
 ];
 
-const interstitial = InterstitialAd.createForAdRequest(TestIds.INTERSTITIAL, {
-  requestNonPersonalizedAdsOnly: true,
-  keywords: ['library', 'books', 'education'],
-});
-
 export default function App() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -84,6 +79,8 @@ export default function App() {
   const pendingActionRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    const interstitial = getInterstitialAd();
+
     const unsubscribeLoaded = interstitial.addAdEventListener(
       AdEventType.LOADED,
       () => {
@@ -112,6 +109,8 @@ export default function App() {
   }, []);
 
   function executeWithAd(action: () => void) {
+    const interstitial = getInterstitialAd();
+
     if (interstitialLoaded) {
       pendingActionRef.current = action;
       interstitial.show();
@@ -169,7 +168,9 @@ export default function App() {
         if (status !== 'granted') {
           setUserLocation(SEOUL_CITY_HALL);
           setLocationLabel('서울시청 기준');
-          setLocationMessage('위치 권한이 꺼져 있어 서울시청 기준으로 정렬합니다.');
+          setLocationMessage(
+            '위치 권한이 없어 서울시청 기준 거리순으로 보여드립니다.',
+          );
           return;
         }
 
@@ -197,7 +198,11 @@ export default function App() {
         );
       } catch {
         if (shouldApply()) {
-          setLocationMessage('현재 위치를 가져오지 못해 기존 기준으로 정렬합니다.');
+          setUserLocation(SEOUL_CITY_HALL);
+          setLocationLabel('서울시청 기준');
+          setLocationMessage(
+            '현재 위치를 가져오지 못해 서울시청 기준 거리순으로 보여드립니다.',
+          );
         }
       } finally {
         if (shouldApply()) {
@@ -365,6 +370,152 @@ export default function App() {
     });
   }
 
+  const listHeader = useMemo(
+    () => (
+      <>
+        <View style={styles.hero}>
+          <View style={styles.brandRow}>
+            <LogoMark />
+            <Text style={styles.brandName}>오늘의 도서관</Text>
+          </View>
+
+          <Pressable
+            accessibilityHint="현재 위치를 다시 가져와 검색 결과를 거리순으로 정렬합니다."
+            accessibilityLabel={locationLoading ? '위치 확인 중' : locationLabel}
+            accessibilityRole="button"
+            disabled={locationLoading}
+            onPress={() =>
+              refreshCurrentLocation({
+                showRefreshMessage: true,
+              })
+            }
+            style={({ pressed }) => [
+              styles.heroLocationPill,
+              pressed && styles.heroLocationPillPressed,
+              locationLoading && styles.heroLocationPillLoading,
+            ]}
+          >
+            <View style={styles.locationDot} />
+            {locationLoading ? (
+              <ActivityIndicator color="#2563eb" size="small" />
+            ) : null}
+            <Text style={styles.heroLocationText}>{locationLabel}</Text>
+          </Pressable>
+
+          <Text style={styles.heroTitle}>
+            오늘 가까운{'\n'}
+            <Text style={styles.heroTitleAccent}>열린 도서관</Text>{' '}
+            {openCount.toLocaleString()}곳을 찾았어요
+          </Text>
+
+          <View style={styles.summaryRow}>
+            <Metric
+              label="검색 결과"
+              tone="default"
+              value={`${preparedLibraries.length}곳`}
+            />
+            <Metric label="지금 열림" tone="open" value={`${openCount}곳`} />
+            <Metric label="저장됨" tone="save" value={`${favorites.length}곳`} />
+          </View>
+        </View>
+
+        {locationMessage ? (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeTitle}>위치 안내</Text>
+            <Text style={styles.noticeText}>{locationMessage}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.searchPanel}>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            onChangeText={setQuery}
+            placeholder="예: 마포, 어린이, 중앙도서관"
+            placeholderTextColor="#8b948f"
+            returnKeyType="search"
+            style={styles.searchInput}
+            value={query}
+          />
+
+          <ScrollView
+            contentContainerStyle={styles.filterRow}
+            horizontal
+            keyboardShouldPersistTaps="always"
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+          >
+            {FILTERS.map((item) => {
+              const selected = filter === item.value;
+
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  hitSlop={6}
+                  key={item.value}
+                  onPress={() => setFilter(item.value)}
+                  style={({ pressed }) => [
+                    styles.filterChip,
+                    selected && styles.filterChipActive,
+                    pressed && styles.filterChipPressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      selected && styles.filterChipTextActive,
+                    ]}
+                  >
+                    {item.label}
+                    <Text
+                      style={[
+                        styles.filterChipCount,
+                        selected && styles.filterChipCountActive,
+                      ]}
+                    >
+                      {' '}
+                      {filterStats[item.value].toLocaleString()}
+                    </Text>
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+
+        {libraryData.warning ? (
+          <View style={styles.dataWarningBox}>
+            <Text style={styles.dataWarningText}>{libraryData.warning}</Text>
+          </View>
+        ) : null}
+
+        <View style={styles.listHeaderRow}>
+          <Text style={styles.listHeaderTitle}>
+            가까운 순 ·{' '}
+            <Text style={styles.listHeaderHighlight}>
+              {preparedLibraries.length.toLocaleString()}곳
+            </Text>
+          </Text>
+        </View>
+      </>
+    ),
+    [
+      favorites.length,
+      filter,
+      filterStats,
+      libraryData.warning,
+      locationLabel,
+      locationLoading,
+      locationMessage,
+      openCount,
+      preparedLibraries.length,
+      query,
+      refreshCurrentLocation,
+    ],
+  );
+
   if (!launchReady) {
     return <LaunchScreen />;
   }
@@ -372,119 +523,6 @@ export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" />
-
-      <View style={styles.hero}>
-        <View style={styles.brandRow}>
-          <LogoMark />
-          <Text style={styles.brandName}>오늘의 도서관</Text>
-        </View>
-
-        <Pressable
-          accessibilityHint="현재 위치를 다시 가져와 검색 결과를 거리순으로 정렬합니다."
-          accessibilityLabel={locationLoading ? '위치 확인 중' : locationLabel}
-          accessibilityRole="button"
-          disabled={locationLoading}
-          onPress={() =>
-            refreshCurrentLocation({
-              showRefreshMessage: true,
-            })
-          }
-          style={({ pressed }) => [
-            styles.heroLocationPill,
-            pressed && styles.heroLocationPillPressed,
-            locationLoading && styles.heroLocationPillLoading,
-          ]}
-        >
-          <View style={styles.locationDot} />
-          {locationLoading ? (
-            <ActivityIndicator color="#2563eb" size="small" />
-          ) : null}
-          <Text style={styles.heroLocationText}>{locationLabel}</Text>
-        </Pressable>
-
-        <Text style={styles.heroTitle}>
-          오늘 가까운{'\n'}
-          <Text style={styles.heroTitleAccent}>열린 도서관</Text>{' '}
-          {openCount.toLocaleString()}곳을 찾았어요
-        </Text>
-
-        <View style={styles.summaryRow}>
-          <Metric label="검색 결과" tone="default" value={`${preparedLibraries.length}곳`} />
-          <Metric label="지금 열림" tone="open" value={`${openCount}곳`} />
-          <Metric label="저장됨" tone="save" value={`${favorites.length}곳`} />
-        </View>
-      </View>
-
-      {locationMessage ? (
-        <View style={styles.noticeBox}>
-          <Text style={styles.noticeTitle}>위치 안내</Text>
-          <Text style={styles.noticeText}>{locationMessage}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.searchPanel}>
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-          onChangeText={setQuery}
-          placeholder="예: 마포, 어린이, 중앙도서관"
-          placeholderTextColor="#8b948f"
-          returnKeyType="search"
-          style={styles.searchInput}
-          value={query}
-        />
-
-        <ScrollView
-          contentContainerStyle={styles.filterRow}
-          horizontal
-          keyboardShouldPersistTaps="always"
-          showsHorizontalScrollIndicator={false}
-        >
-          {FILTERS.map((item) => {
-            const selected = filter === item.value;
-
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                hitSlop={6}
-                key={item.value}
-                onPress={() => setFilter(item.value)}
-                style={({ pressed }) => [
-                  styles.filterChip,
-                  selected && styles.filterChipActive,
-                  pressed && styles.filterChipPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    selected && styles.filterChipTextActive,
-                  ]}
-                >
-                  {item.label}
-                  <Text
-                    style={[
-                      styles.filterChipCount,
-                      selected && styles.filterChipCountActive,
-                    ]}
-                  >
-                    {' '}
-                    {filterStats[item.value].toLocaleString()}
-                  </Text>
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {libraryData.warning ? (
-        <View style={styles.dataWarningBox}>
-          <Text style={styles.dataWarningText}>{libraryData.warning}</Text>
-        </View>
-      ) : null}
 
       <FlatList
         contentContainerStyle={styles.listContent}
@@ -495,36 +533,25 @@ export default function App() {
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="always"
         keyExtractor={(item) => item.library.id}
-        ListFooterComponent={
-          preparedLibraries.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>!</Text>
-              <Text style={styles.emptyTitle}>조건에 맞는 도서관이 없어요</Text>
-              <Text style={styles.emptyText}>
-                필터를 전체로 바꾸거나 다른 지역명을 검색해보세요.
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setFilter('all')}
-                style={styles.emptyButton}
-              >
-                <Text style={styles.emptyButtonText}>전체 보기</Text>
-              </Pressable>
-            </View>
-          ) : null
-        }
-        ListHeaderComponent={
-          <View style={styles.listHeaderRow}>
-            <Text style={styles.listHeaderTitle}>
-              가까운 순 ·{' '}
-              <Text style={styles.listHeaderHighlight}>
-                {preparedLibraries.length.toLocaleString()}곳
-              </Text>
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>!</Text>
+            <Text style={styles.emptyTitle}>조건에 맞는 도서관이 없어요</Text>
+            <Text style={styles.emptyText}>
+              필터를 전체로 바꾸거나 다른 지역명을 검색해보세요.
             </Text>
-            <Text style={styles.listHeaderSort}>거리 ↓</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setFilter('all')}
+              style={styles.emptyButton}
+            >
+              <Text style={styles.emptyButtonText}>전체 보기</Text>
+            </Pressable>
           </View>
         }
+        ListHeaderComponent={listHeader}
         maxToRenderPerBatch={8}
+        nestedScrollEnabled
         removeClippedSubviews={Platform.OS === 'android'}
         renderItem={({ item }) => (
           <View style={styles.libraryCardWrapper}>
@@ -547,7 +574,7 @@ export default function App() {
       />
       <View style={styles.bannerContainer}>
         <BannerAd
-          unitId={TestIds.BANNER}
+          unitId={getBannerAdUnitId()}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
           requestOptions={{
             requestNonPersonalizedAdsOnly: true,
@@ -1069,9 +1096,6 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   listHeaderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 10,
     marginHorizontal: 20,
     marginTop: 14,
@@ -1090,11 +1114,6 @@ const styles = StyleSheet.create({
   },
   listHeaderHighlight: {
     color: '#2563eb',
-  },
-  listHeaderSort: {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: '700',
   },
   libraryCard: {
     backgroundColor: '#ffffff',

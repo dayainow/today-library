@@ -43,12 +43,12 @@
         "projectId": "90dbb139-382e-495f-b419-28ccf2d2d852"
       }
     },
-    "privacy": "https://today-library.vercel.app/api/privacy",
+    "privacy": "https://today-library-sigma.vercel.app/api/privacy",
     "plugins": [
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "androidAppId": "ca-app-pub-4061122570976810~5183936696",
           "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ],
