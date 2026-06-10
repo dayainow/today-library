@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const CONTACT_EMAIL = 'devops@dobedub.com';
+const CONTACT_EMAIL = 'dayainow@gmail.com';
 const APP_NAME = '오늘의 도서관';
 const EFFECTIVE_DATE = '2026년 6월 5일';
 
