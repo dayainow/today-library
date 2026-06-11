@@ -11,6 +11,12 @@
       "schedule": "0 18 * * *"
     }
   ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/landing.html"
+    }
+  ],
   "redirects": [
     {
       "source": "/privacy",

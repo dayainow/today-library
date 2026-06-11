@@ -1,23 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import mobileAds, {
-  AdEventType,
-  BannerAd,
-  BannerAdSize,
-} from 'react-native-google-mobile-ads';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { getBannerAdUnitId, getInterstitialAd } from './src/config/ads';
-
-mobileAds()
-  .initialize()
-  .then((adapterStatuses) => {
-    console.log('AdMob initialization complete:', adapterStatuses);
-  })
-  .catch((error) => {
-    console.error('AdMob initialization failed:', error);
-  });
+import { AppAdBanner } from './src/components/AppAdBanner';
+import { useInterstitialAd } from './src/hooks/useInterstitialAd';
+import { isScreenshotMode } from './src/config/screenshot';
 import {
   ActivityIndicator,
   Alert,
@@ -75,49 +63,7 @@ export default function App() {
   const [libraryData, setLibraryData] = useState(getInitialLibraryData);
   const [launchReady, setLaunchReady] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const [interstitialLoaded, setInterstitialLoaded] = useState(false);
-  const pendingActionRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    const interstitial = getInterstitialAd();
-
-    const unsubscribeLoaded = interstitial.addAdEventListener(
-      AdEventType.LOADED,
-      () => {
-        setInterstitialLoaded(true);
-      },
-    );
-
-    const unsubscribeClosed = interstitial.addAdEventListener(
-      AdEventType.CLOSED,
-      () => {
-        setInterstitialLoaded(false);
-        interstitial.load();
-        if (pendingActionRef.current) {
-          pendingActionRef.current();
-          pendingActionRef.current = null;
-        }
-      },
-    );
-
-    interstitial.load();
-
-    return () => {
-      unsubscribeLoaded();
-      unsubscribeClosed();
-    };
-  }, []);
-
-  function executeWithAd(action: () => void) {
-    const interstitial = getInterstitialAd();
-
-    if (interstitialLoaded) {
-      pendingActionRef.current = action;
-      interstitial.show();
-    } else {
-      action();
-    }
-  }
+  const { executeWithAd } = useInterstitialAd();
 
   useEffect(() => {
     const timer = setTimeout(() => setLaunchReady(true), 1200);
@@ -169,7 +115,9 @@ export default function App() {
           setUserLocation(SEOUL_CITY_HALL);
           setLocationLabel('서울시청 기준');
           setLocationMessage(
-            '위치 권한이 없어 서울시청 기준 거리순으로 보여드립니다.',
+            showRefreshMessage
+              ? '위치 권한이 없어 서울시청 기준 거리순으로 보여드립니다.'
+              : '',
           );
           return;
         }
@@ -201,7 +149,9 @@ export default function App() {
           setUserLocation(SEOUL_CITY_HALL);
           setLocationLabel('서울시청 기준');
           setLocationMessage(
-            '현재 위치를 가져오지 못해 서울시청 기준 거리순으로 보여드립니다.',
+            showRefreshMessage
+              ? '현재 위치를 가져오지 못해 서울시청 기준 거리순으로 보여드립니다.'
+              : '',
           );
         }
       } finally {
@@ -419,7 +369,7 @@ export default function App() {
           </View>
         </View>
 
-        {locationMessage ? (
+        {locationMessage && !isScreenshotMode() ? (
           <View style={styles.noticeBox}>
             <Text style={styles.noticeTitle}>위치 안내</Text>
             <Text style={styles.noticeText}>{locationMessage}</Text>
@@ -485,7 +435,7 @@ export default function App() {
           </ScrollView>
         </View>
 
-        {libraryData.warning ? (
+        {libraryData.warning && !isScreenshotMode() ? (
           <View style={styles.dataWarningBox}>
             <Text style={styles.dataWarningText}>{libraryData.warning}</Text>
           </View>
@@ -572,15 +522,7 @@ export default function App() {
         style={styles.libraryFlatList}
         windowSize={5}
       />
-      <View style={styles.bannerContainer}>
-        <BannerAd
-          unitId={getBannerAdUnitId()}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-        />
-      </View>
+      <AppAdBanner />
     </SafeAreaView>
   );
 }
@@ -774,12 +716,6 @@ function formatHours(hours: Library['weekdayHours']) {
 
 
 const styles = StyleSheet.create({
-  bannerContainer: {
-    alignItems: 'center',
-    backgroundColor: '#F7F8FB',
-    justifyContent: 'center',
-    width: '100%',
-  },
   screen: {
     flex: 1,
     backgroundColor: '#f7f8fb',
