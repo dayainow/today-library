@@ -194,7 +194,7 @@ today-library-assets/
 |------|------|
 | 앱 이름 (한국어) | 오늘의 도서관 |
 | 앱 이름 (영문) | Today Library |
-| 패키지 ID | com.ola.todaylibrary |
+| 패키지 ID | com.ola.todaylibrar |
 | 카테고리 | 도서 및 참고자료 |
 | 플랫폼 | Android (Google Play), iOS 추후 |
 | 개발 스택 | React Native (Expo) |

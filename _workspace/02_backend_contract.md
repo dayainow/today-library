@@ -7,4 +7,4 @@
 
 ## Build Config
 - `eas.json` is configured for production autoIncrement.
-- `app.json` has `com.ola.todaylibrary` and required location permissions.
+- `app.json` has `com.ola.todaylibrar` and required location permissions.

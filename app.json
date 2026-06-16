@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "package": "com.ola.todaylibrary",
+      "package": "com.ola.todaylibrar",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
