@@ -4,7 +4,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AppAdBanner } from './src/components/AppAdBanner';
-import { useInterstitialAd } from './src/hooks/useInterstitialAd';
 import { isScreenshotMode } from './src/config/screenshot';
 import {
   ActivityIndicator,
@@ -63,7 +62,6 @@ export default function App() {
   const [libraryData, setLibraryData] = useState(getInitialLibraryData);
   const [launchReady, setLaunchReady] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const { executeWithAd } = useInterstitialAd();
 
   useEffect(() => {
     const timer = setTimeout(() => setLaunchReady(true), 1200);
@@ -308,16 +306,14 @@ export default function App() {
   }
 
   function openDirections(library: Library) {
-    executeWithAd(() => {
-      const destination = `${library.latitude},${library.longitude}`;
-      const encodedName = encodeURIComponent(library.name);
-      const url =
-        Platform.OS === 'ios'
-          ? `http://maps.apple.com/?daddr=${destination}&q=${encodedName}`
-          : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
+    const destination = `${library.latitude},${library.longitude}`;
+    const encodedName = encodeURIComponent(library.name);
+    const url =
+      Platform.OS === 'ios'
+        ? `http://maps.apple.com/?daddr=${destination}&q=${encodedName}`
+        : `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=walking`;
 
-      openUrl(url, '지도 앱을 열 수 없습니다.');
-    });
+    openUrl(url, '지도 앱을 열 수 없습니다.');
   }
 
   const listHeader = useMemo(
