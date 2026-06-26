@@ -1,6 +1,30 @@
 # 오늘의 도서관
 
-공공데이터포털 `전국도서관표준데이터` 구조에 맞춘 도서관/공부공간 찾기 MVP입니다.
+전국 공공도서관 운영 정보를 **지금 열린 순·가까운 순**으로 보여주는 React Native(Expo) 앱입니다.
+
+## 배포 주소
+
+| 서비스 | URL |
+|--------|-----|
+| **API · 랜딩** | [https://today-library-sigma.vercel.app](https://today-library-sigma.vercel.app) |
+| **도서관 데이터 API** | [https://today-library-sigma.vercel.app/api/libraries](https://today-library-sigma.vercel.app/api/libraries) |
+| **개인정보 처리방침** | [https://today-library-sigma.vercel.app/api/privacy](https://today-library-sigma.vercel.app/api/privacy) |
+
+앱 패키지: `com.dobedub.todaylibrary`
+
+## 스크린샷
+
+### 홈 — 열린 도서관 목록
+
+![홈 화면 — 열린 도서관 목록](assets/screenshots/01-home.png)
+
+### 검색 — 마포 지역
+
+![마포 검색 결과](assets/screenshots/02-search-mapo.png)
+
+### 도서관 카드 — 운영시간·길찾기
+
+![도서관 카드 상세](assets/screenshots/03-library-list.png)
 
 ## 포함된 기능
 
@@ -22,10 +46,16 @@ npm run ios
 npm run android
 ```
 
-Expo Go로 확인하려면:
+Expo Go / 개발 클라이언트:
 
 ```shell
 npm start
+```
+
+태블릿·웹 스크린샷용:
+
+```shell
+npm run web -- --port 8086
 ```
 
 ## 공공데이터 캐시 API
@@ -41,8 +71,8 @@ cp .env.example .env.local
 ```shell
 PUBLIC_DATA_SERVICE_KEY=공공데이터포털_인증키
 CRON_SECRET=긴_랜덤_문자열
-PUBLIC_APP_URL=https://your-vercel-domain.vercel.app
-EXPO_PUBLIC_LIBRARY_API_URL=https://your-vercel-domain.vercel.app/api/libraries
+PUBLIC_APP_URL=https://today-library-sigma.vercel.app
+EXPO_PUBLIC_LIBRARY_API_URL=https://today-library-sigma.vercel.app/api/libraries
 ```
 
 로컬에서 API만 확인하려면:
@@ -62,14 +92,14 @@ Vercel 프로젝트 환경 변수에 아래 값을 넣습니다.
 
 - `PUBLIC_DATA_SERVICE_KEY`: 공공데이터포털에서 발급받은 서비스 키
 - `CRON_SECRET`: cron endpoint 보호용 랜덤 secret
-- `PUBLIC_APP_URL`: production 도메인
+- `PUBLIC_APP_URL`: production 도메인 (`https://today-library-sigma.vercel.app`)
 
 `vercel.json`에는 매일 18:00 UTC, 한국 시간 03:00에 `/api/cron/refresh-libraries`를 호출하는 cron이 들어 있습니다. Hobby 플랜의 cron 제한을 고려해 하루 1회로 설정했습니다.
 
 배포 후 Expo/EAS 빌드 환경에는 아래 public 값만 넣습니다.
 
 ```shell
-EXPO_PUBLIC_LIBRARY_API_URL=https://your-vercel-domain.vercel.app/api/libraries
+EXPO_PUBLIC_LIBRARY_API_URL=https://today-library-sigma.vercel.app/api/libraries
 ```
 
 이 값은 앱에 공개되어도 되는 캐시 JSON 주소입니다. `PUBLIC_DATA_SERVICE_KEY`는 앱 환경변수로 넣지 않습니다.
@@ -81,3 +111,4 @@ EXPO_PUBLIC_LIBRARY_API_URL=https://your-vercel-domain.vercel.app/api/libraries
 - Google Play 개인 신규 계정은 closed test 12명 / 14일 조건이 필요할 수 있음
 - 위치 권한 문구는 `app.json`에 설정됨
 - 지도 SDK를 넣지 않고 외부 지도 앱을 열기 때문에 지도 API 과금은 없음
+- Play 스토어 등록 자료: [`docs/play-store-listing.md`](docs/play-store-listing.md)
